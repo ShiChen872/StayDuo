@@ -47,6 +47,16 @@ enum SmokeTest {
 
             keeper.releaseAll()
             print("[release] OK")
+
+            var sampler = HostSampler()
+            _ = sampler.sample()
+            Thread.sleep(forTimeInterval: 0.2)
+            let host = sampler.sample()
+            let cpu = host.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "--"
+            let load = host.load1.map { String(format: "%.2f", $0) } ?? "--"
+            print(
+                "[host] CPU=\(cpu) load1=\(load) mem=\(Int(host.memoryUsedPercent.rounded()))% (\(host.memoryPressure.title)) disk remaining=\(Int(host.diskRemainingPercent.rounded()))%"
+            )
         } catch {
             print("FAIL: \(error.localizedDescription)")
             exit(1)

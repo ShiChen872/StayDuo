@@ -34,17 +34,31 @@ struct MenuBarLabel: View {
     var body: some View {
         HStack(spacing: 4) {
             MenuBarStayGlyph(enabled: store.isEnabled, mode: store.mode)
-            Text(store.isEnabled ? store.mode.menuBarText : "关")
+            Text(store.host?.menuBarText ?? "C--·M--·D--")
+                .monospacedDigit()
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(store.isEnabled ? Color.primary : Color.secondary)
+                .foregroundStyle(color(for: lowestHealth))
         }
         .accessibilityLabel(accessibilityText)
     }
 
+    private var lowestHealth: Double? {
+        guard let host = store.host else { return nil }
+        return min(host.cpuHealthPercent, host.memoryHealthPercent, host.diskHealthPercent)
+    }
+
+    private func color(for remaining: Double?) -> Color {
+        guard let remaining else { return .secondary }
+        if remaining > 50 { return .primary }
+        if remaining > 10 { return Color(red: 1.0, green: 0.58, blue: 0.14) }
+        return Color(red: 0.95, green: 0.35, blue: 0.35)
+    }
+
     private var accessibilityText: String {
-        if store.isEnabled {
-            return "StayDuo \(store.mode.title)"
+        let modeText = store.isEnabled ? store.mode.title : "已关闭"
+        if let host = store.host {
+            return "StayDuo \(modeText)，\(host.menuBarText)"
         }
-        return "StayDuo 已关闭"
+        return "StayDuo \(modeText)"
     }
 }

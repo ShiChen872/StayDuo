@@ -18,8 +18,17 @@ A tiny menu-bar utility for Mac: keep the display awake, or let the screen sleep
 - 面板右上角开关可暂停；退出应用后释放断言
 - 「登录时启动」（需安装到 `~/Applications`）
 - 选择与开关会记在本机，下次打开沿用
+- 本机资源：CPU 占用、内存占用 / 压力、系统盘剩余（菜单栏 + 面板三环）
 
-菜单栏缩写：`亮` = 常亮屏幕，`网` = 息屏不断网，`关` = 已暂停。
+菜单栏：模式图标（太阳 / Wi-Fi / 暂停）+ `C12·M34·D88`
+
+| 缩写 | 含义 | 颜色 |
+|------|------|------|
+| **C** | CPU 占用 % | 占用越低越好 |
+| **M** | 内存占用 % | 跟压力走（正常 / 警告 / 紧急），占用高也会变色 |
+| **D** | 系统盘剩余 % | 剩余越多越好 |
+
+阈值与 QuotaDuo 相同：健康度 >50 正常，>10 琥珀，否则红。CPU / 内存用 `100 − 占用` 当健康度。
 
 ## 两种模式
 
@@ -48,7 +57,7 @@ chmod +x script/build_and_run.sh
 ./script/build_and_run.sh
 open ~/Applications/StayDuo.app
 
-# 冒烟测试：创建 / 切换 / 释放断言
+# 冒烟测试：断言 + 采一次本机指标
 swift build && .build/debug/StayDuo --smoke-test
 ```
 
@@ -59,7 +68,8 @@ swift build && .build/debug/StayDuo --smoke-test
 1. 启动后菜单栏出现太阳（常亮）或 Wi-Fi（息屏不断网）图标。
 2. 点图标：右上角开关打开 = 正在保持唤醒；关掉则暂停。
 3. 点选两种模式之一；暂停时点某个模式会同时重新打开。
-4. 不需要时点「退出」。断言随进程释放，系统恢复原样。
+4. 面板「本机」卡有 CPU / 内存 / 磁盘三环；CPU 副标是 1 分钟 load，内存是已用/总量 + 压力，磁盘是剩余/总量（APFS 按访达的 Important Usage）。
+5. 不需要时点「退出」。断言随进程释放，系统恢复原样。
 
 确认断言是否生效：
 
@@ -81,10 +91,10 @@ pmset -g assertions | grep StayDuo
 ```text
 Sources/StayDuo/
   App/         MenuBarExtra 入口、冒烟测试
-  Models/      双模式
-  Services/    IOKit 断言、登录项
-  Stores/      开关、模式、本机偏好
-  Views/       菜单栏标签与下拉面板
+  Models/      双模式、本机快照
+  Services/    IOKit 断言、登录项、CPU/内存/磁盘采样
+  Stores/      开关、模式、本机偏好、定时采样
+  Views/       菜单栏标签、本机三环、下拉面板
 script/
   build_and_run.sh        构建并装到 ~/Applications
   generate_app_icon.swift 代码手绘图标（太阳 + Wi-Fi 弧）

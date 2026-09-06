@@ -10,6 +10,7 @@ struct StayPanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             statusCard
+            HostMetricsCard(metrics: store.host)
             modeList
             note
             settingsRow

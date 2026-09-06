@@ -26,9 +26,11 @@ final class StayStore {
 
     var lastError: String?
     var isAssertionHeld = false
+    var host: HostMetrics?
 
     private let keeper = AssertionKeeper()
     private var didStart = false
+    private var metricsTask: Task<Void, Never>?
 
     init() {
         let defaults = UserDefaults.standard
@@ -58,6 +60,16 @@ final class StayStore {
                 }
             }
         }
+        metricsTask = Task.detached { [weak self] in
+            var sampler = HostSampler()
+            while !Task.isCancelled {
+                let snapshot = sampler.sample()
+                await MainActor.run {
+                    self?.host = snapshot
+                }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
     }
 
     func apply() {
@@ -72,6 +84,8 @@ final class StayStore {
     }
 
     func release() {
+        metricsTask?.cancel()
+        metricsTask = nil
         keeper.releaseAll()
         isAssertionHeld = false
     }
