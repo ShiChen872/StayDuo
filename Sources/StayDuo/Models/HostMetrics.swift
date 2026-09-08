@@ -45,16 +45,19 @@ struct HostMetrics: Equatable {
     var diskRemainingPercent: Double
     var diskFreeBytes: UInt64
     var diskTotalBytes: UInt64
-    var volumeName: String?
+    var battery: BatteryStatus?
+
+    var diskUsedPercent: Double {
+        max(0, min(100, 100 - diskRemainingPercent))
+    }
 
     var menuBarText: String {
-        let cpu = cpuPercent.map { "C\(Int($0.rounded()))" } ?? "C--"
-        let memory = "M\(Int(memoryUsedPercent.rounded()))"
-        let disk = "D\(Int(diskRemainingPercent.rounded()))"
+        let cpu = cpuPercent.map { "C\(Self.twoDigits($0))" } ?? "C--"
+        let memory = "M\(Self.twoDigits(memoryUsedPercent))"
+        let disk = "D\(Self.twoDigits(diskUsedPercent))"
         return "\(cpu)·\(memory)·\(disk)"
     }
 
-    /// CPU/memory: lower usage is healthier. Disk: remaining is already healthy.
     var cpuHealthPercent: Double {
         100 - (cpuPercent ?? 0)
     }
@@ -72,13 +75,35 @@ struct HostMetrics: Equatable {
     }
 
     var diskSubtitle: String {
-        let name = volumeName.map { "\($0) · " } ?? ""
-        return "\(name)\(Self.formatBytes(diskFreeBytes)) / \(Self.formatBytes(diskTotalBytes))"
+        "剩余 \(Self.formatBytes(diskFreeBytes))"
     }
 
     var loadSubtitle: String {
         guard let load1 else { return "—" }
         return String(format: "load %.2f", load1)
+    }
+
+    func batteryAlert(isEnabled: Bool, mode: StayMode) -> BatteryAlert {
+        guard isEnabled, let battery, battery.isOnBattery else { return .none }
+        let criticalLimit: Double
+        let warningLimit: Double
+        switch mode {
+        case .screenOn:
+            criticalLimit = 20
+            warningLimit = 40
+        case .screenOffKeepNet:
+            criticalLimit = 15
+            warningLimit = 30
+        }
+        if battery.percent <= criticalLimit { return .critical }
+        if battery.percent <= warningLimit { return .warning }
+        return .none
+    }
+
+    static func twoDigits(_ value: Double) -> String {
+        let n = max(0, Int(value.rounded()))
+        if n >= 100 { return "\(n)" }
+        return String(format: "%02d", n)
     }
 
     static func formatBytes(_ bytes: UInt64) -> String {

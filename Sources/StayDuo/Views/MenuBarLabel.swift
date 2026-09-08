@@ -35,11 +35,23 @@ struct MenuBarLabel: View {
         HStack(spacing: 4) {
             MenuBarStayGlyph(enabled: store.isEnabled, mode: store.mode)
             Text(store.host?.menuBarText ?? "C--·M--·D--")
+                .frame(minWidth: 78, alignment: .leading)
                 .monospacedDigit()
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(color(for: lowestHealth))
+                .foregroundStyle(barColor)
         }
         .accessibilityLabel(accessibilityText)
+    }
+
+    private var barColor: Color {
+        switch store.batteryAlert {
+        case .critical:
+            return Color(red: 0.95, green: 0.35, blue: 0.35)
+        case .warning:
+            return Color(red: 1.0, green: 0.58, blue: 0.14)
+        case .none:
+            return color(for: lowestHealth)
+        }
     }
 
     private var lowestHealth: Double? {

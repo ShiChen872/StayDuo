@@ -1,10 +1,13 @@
 import Darwin
 import Foundation
+import IOKit.ps
 
 struct HostSampler {
     private var previousCPU: CPUTicks?
+    private var smoothedCPU: Double?
     private var lastDisk: DiskSample?
     private var sampleCount = 0
+    private let cpuSmoothing = 0.35
 
     mutating func sample() -> HostMetrics {
         sampleCount += 1
@@ -24,7 +27,7 @@ struct HostSampler {
             diskRemainingPercent: disk.remainingPercent,
             diskFreeBytes: disk.freeBytes,
             diskTotalBytes: disk.totalBytes,
-            volumeName: disk.volumeName
+            battery: Self.sampleBattery()
         )
     }
 }
@@ -80,17 +83,22 @@ private struct DiskSample {
     var remainingPercent: Double
     var freeBytes: UInt64
     var totalBytes: UInt64
-    var volumeName: String?
 
-    static let empty = DiskSample(remainingPercent: 0, freeBytes: 0, totalBytes: 0, volumeName: nil)
+    static let empty = DiskSample(remainingPercent: 0, freeBytes: 0, totalBytes: 0)
 }
 
 private extension HostSampler {
     mutating func sampleCPU() -> Double? {
-        guard let current = CPUTicks.read() else { return nil }
-        let percent = previousCPU.flatMap { current.usagePercent(since: $0) }
+        guard let current = CPUTicks.read() else { return smoothedCPU }
+        let raw = previousCPU.flatMap { current.usagePercent(since: $0) }
         previousCPU = current
-        return percent
+        guard let raw else { return smoothedCPU }
+        if let previous = smoothedCPU {
+            smoothedCPU = cpuSmoothing * raw + (1 - cpuSmoothing) * previous
+        } else {
+            smoothedCPU = raw
+        }
+        return smoothedCPU
     }
 
     func sampleMemory() -> MemorySample {
@@ -126,7 +134,6 @@ private extension HostSampler {
     func sampleDisk() -> DiskSample {
         let url = URL(fileURLWithPath: "/")
         let keys: Set<URLResourceKey> = [
-            .volumeNameKey,
             .volumeTotalCapacityKey,
             .volumeAvailableCapacityKey,
             .volumeAvailableCapacityForImportantUsageKey
@@ -147,9 +154,49 @@ private extension HostSampler {
         return DiskSample(
             remainingPercent: remaining,
             freeBytes: UInt64(freeClamped),
-            totalBytes: UInt64(total),
-            volumeName: values.volumeName
+            totalBytes: UInt64(total)
         )
+    }
+
+    static func sampleBattery() -> BatteryStatus? {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            return nil
+        }
+        guard let list = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            return nil
+        }
+
+        let typeKey = kIOPSTypeKey as String
+        let internalType = kIOPSInternalBatteryType as String
+        let currentKey = kIOPSCurrentCapacityKey as String
+        let maxKey = kIOPSMaxCapacityKey as String
+        let chargingKey = kIOPSIsChargingKey as String
+        let stateKey = kIOPSPowerSourceStateKey as String
+        let batteryPower = kIOPSBatteryPowerValue as String
+        let timeToEmptyKey = kIOPSTimeToEmptyKey as String
+
+        for source in list {
+            guard let raw = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any],
+                  raw[typeKey] as? String == internalType
+            else { continue }
+
+            let current = (raw[currentKey] as? Int) ?? 0
+            let maxCapacity = (raw[maxKey] as? Int) ?? 0
+            let percent: Double
+            if maxCapacity > 0 {
+                percent = min(100, max(0, Double(current) / Double(maxCapacity) * 100))
+            } else {
+                percent = min(100, max(0, Double(current)))
+            }
+            let minutes = raw[timeToEmptyKey] as? Int
+            return BatteryStatus(
+                percent: percent,
+                isCharging: raw[chargingKey] as? Bool ?? false,
+                isOnBattery: (raw[stateKey] as? String) == batteryPower,
+                minutesToEmpty: (minutes ?? 0) > 0 ? minutes : nil
+            )
+        }
+        return nil
     }
 
     static func pageSize() -> UInt64 {

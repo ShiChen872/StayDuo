@@ -18,18 +18,9 @@ enum StayMode: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .screenOn:
-            return "屏幕不灭，系统不睡。下载、跑任务、开会都适用。"
+            return "屏不灭，系统不睡"
         case .screenOffKeepNet:
-            return "允许按系统设置熄屏，但电脑保持唤醒，Wi-Fi / 有线网不断开。"
-        }
-    }
-
-    var menuBarText: String {
-        switch self {
-        case .screenOn:
-            return "亮"
-        case .screenOffKeepNet:
-            return "网"
+            return "可熄屏，网不断"
         }
     }
 

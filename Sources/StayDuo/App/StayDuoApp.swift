@@ -54,9 +54,11 @@ enum SmokeTest {
             let host = sampler.sample()
             let cpu = host.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "--"
             let load = host.load1.map { String(format: "%.2f", $0) } ?? "--"
+            let battery = host.battery.map { $0.lineText } ?? "无电池"
             print(
-                "[host] CPU=\(cpu) load1=\(load) mem=\(Int(host.memoryUsedPercent.rounded()))% (\(host.memoryPressure.title)) disk remaining=\(Int(host.diskRemainingPercent.rounded()))%"
+                "[host] CPU=\(cpu) load1=\(load) mem=\(Int(host.memoryUsedPercent.rounded()))% (\(host.memoryPressure.title)) disk used=\(Int(host.diskUsedPercent.rounded()))% remaining=\(Int(host.diskRemainingPercent.rounded()))%"
             )
+            print("[battery] \(battery)")
         } catch {
             print("FAIL: \(error.localizedDescription)")
             exit(1)

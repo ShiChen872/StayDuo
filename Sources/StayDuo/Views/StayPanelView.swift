@@ -7,11 +7,12 @@ struct StayPanelView: View {
     @State private var loginItemMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
-            statusCard
+            batteryRow
             HostMetricsCard(metrics: store.host)
             modeList
+            durationRow
             note
             settingsRow
             footer
@@ -39,31 +40,27 @@ struct StayPanelView: View {
         }
     }
 
-    private var statusCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: store.isEnabled ? store.mode.systemImage : "moon.zzz")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 28, height: 28)
-                .background(statusColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusTitle)
-                    .font(.subheadline.weight(.semibold))
-                Text(statusDetail)
+    @ViewBuilder
+    private var batteryRow: some View {
+        if let battery = store.host?.battery {
+            HStack(spacing: 6) {
+                Image(systemName: batteryIcon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(battery.lineText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .foregroundStyle(batteryColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(batteryColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var modeList: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ForEach(StayMode.allCases) { mode in
                 Button {
                     store.mode = mode
@@ -71,29 +68,25 @@ struct StayPanelView: View {
                         store.isEnabled = true
                     }
                 } label: {
-                    HStack(alignment: .top, spacing: 10) {
+                    HStack(spacing: 8) {
                         Image(systemName: store.mode == mode && store.isEnabled ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(store.mode == mode && store.isEnabled ? statusColor : Color.secondary)
-                            .font(.system(size: 15, weight: .semibold))
-                            .padding(.top, 1)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(mode.title)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text(mode.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(mode.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(mode.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .padding(12)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         Color.primary.opacity(store.mode == mode && store.isEnabled ? 0.08 : 0.04),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                     )
                 }
                 .buttonStyle(.plain)
@@ -101,8 +94,38 @@ struct StayPanelView: View {
         }
     }
 
+    private var durationRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("时长")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                ForEach(StayDuration.allCases) { item in
+                    Button {
+                        store.duration = item
+                        if !store.isEnabled {
+                            store.isEnabled = true
+                        }
+                    } label: {
+                        Text(item.title)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 5)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                store.duration == item ? statusColor.opacity(0.18) : Color.primary.opacity(0.05),
+                                in: Capsule()
+                            )
+                            .foregroundStyle(store.duration == item ? statusColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private var note: some View {
-        Text("合上盖仍会睡眠（M 系列默认）。外接显示器并接电源的开盖模式除外。退出应用后恢复系统自己的休眠设置。")
+        Text("合上盖仍会睡眠（M 系列默认）。外接显示器并接电源除外。")
             .font(.system(size: 10))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -138,15 +161,10 @@ struct StayPanelView: View {
 
     private var footer: some View {
         HStack {
-            if let lastError = store.lastError {
-                Text(lastError)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(store.remainingDescription(now: context.date))
                     .font(.caption)
-                    .foregroundStyle(.orange)
-                    .lineLimit(2)
-            } else {
-                Text(store.isAssertionHeld ? "断言已生效" : "未持有断言")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(store.lastError == nil ? Color.secondary : Color.orange)
             }
             Spacer()
             Button("退出") {
@@ -156,23 +174,6 @@ struct StayPanelView: View {
             .buttonStyle(.borderless)
             .font(.caption)
         }
-    }
-
-    private var statusTitle: String {
-        if !store.isEnabled {
-            return "已暂停"
-        }
-        return store.mode.title
-    }
-
-    private var statusDetail: String {
-        if let lastError = store.lastError {
-            return lastError
-        }
-        if !store.isEnabled {
-            return "系统按自己的节能设置休眠。打开开关即可重新保持唤醒。"
-        }
-        return store.mode.subtitle
     }
 
     private var statusColor: Color {
@@ -185,5 +186,30 @@ struct StayPanelView: View {
         case .screenOffKeepNet:
             return Color(red: 0.18, green: 0.72, blue: 0.62)
         }
+    }
+
+    private var batteryColor: Color {
+        switch store.batteryAlert {
+        case .critical:
+            return Color(red: 0.95, green: 0.35, blue: 0.35)
+        case .warning:
+            return Color(red: 1.0, green: 0.58, blue: 0.14)
+        case .none:
+            return .secondary
+        }
+    }
+
+    private var batteryIcon: String {
+        guard let battery = store.host?.battery else { return "battery.100" }
+        if battery.isCharging {
+            return "battery.100.bolt"
+        }
+        if battery.percent <= 15 {
+            return "battery.25"
+        }
+        if battery.percent <= 30 {
+            return "battery.50"
+        }
+        return "battery.75"
     }
 }

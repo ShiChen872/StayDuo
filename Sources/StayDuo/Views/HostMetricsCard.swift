@@ -25,7 +25,7 @@ struct HostMetricsCard: View {
                     )
                     metricColumn(
                         title: "磁盘",
-                        displayPercent: metrics.diskRemainingPercent,
+                        displayPercent: metrics.diskUsedPercent,
                         healthPercent: metrics.diskHealthPercent,
                         subtitle: metrics.diskSubtitle
                     )
