@@ -116,7 +116,10 @@ private extension HostSampler {
         var used: UInt64 = 0
         if result == KERN_SUCCESS {
             let pageSize = Self.pageSize()
-            let pages = UInt64(stats.active_count) + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)
+            let internalPages = UInt64(stats.internal_page_count)
+            let purgeablePages = UInt64(stats.purgeable_count)
+            let appPages = internalPages > purgeablePages ? (internalPages - purgeablePages) : 0
+            let pages = appPages + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)
             used = pages * pageSize
         }
         if used > total, total > 0 {

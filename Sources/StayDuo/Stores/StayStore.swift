@@ -5,7 +5,7 @@ import Observation
 @Observable
 @MainActor
 final class StayStore {
-    private enum Keys {
+    enum Keys {
         static let enabled = "stayduo.enabled"
         static let mode = "stayduo.mode"
         static let duration = "stayduo.duration"
@@ -14,7 +14,7 @@ final class StayStore {
     var isEnabled: Bool {
         didSet {
             if persistEnabledPreference {
-                UserDefaults.standard.set(isEnabled, forKey: Keys.enabled)
+                defaults.set(isEnabled, forKey: Keys.enabled)
             }
             if isEnabled {
                 scheduleExpiry()
@@ -27,15 +27,15 @@ final class StayStore {
 
     var mode: StayMode {
         didSet {
-            UserDefaults.standard.set(mode.rawValue, forKey: Keys.mode)
+            defaults.set(mode.rawValue, forKey: Keys.mode)
             apply()
         }
     }
 
     var duration: StayDuration {
         didSet {
-            UserDefaults.standard.set(duration.rawValue, forKey: Keys.duration)
-            if isEnabled {
+            defaults.set(duration.rawValue, forKey: Keys.duration)
+            if isEnabled, duration != oldValue {
                 scheduleExpiry()
             }
         }
@@ -49,14 +49,25 @@ final class StayStore {
         host?.batteryAlert(isEnabled: isEnabled, mode: mode) ?? .none
     }
 
-    private let keeper = AssertionKeeper()
+    private let defaults: UserDefaults
+    private let keeper: any AssertionApplying
+    private let now: () -> Date
     private var didStart = false
     private var persistEnabledPreference = true
     private var metricsTask: Task<Void, Never>?
     private var expiryTask: Task<Void, Never>?
+    private var wakeTask: Task<Void, Never>?
+    private var terminateTask: Task<Void, Never>?
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(
+        defaults: UserDefaults = .standard,
+        keeper: any AssertionApplying = AssertionKeeper(),
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.defaults = defaults
+        self.keeper = keeper
+        self.now = now
+
         if defaults.object(forKey: Keys.enabled) == nil {
             isEnabled = true
         } else {
@@ -72,7 +83,6 @@ final class StayStore {
         } else {
             duration = .indefinite
         }
-        apply()
     }
 
     func start() {
@@ -82,13 +92,18 @@ final class StayStore {
         if isEnabled {
             scheduleExpiry()
         }
-        Task { [weak self] in
+        wakeTask = Task { [weak self] in
             for await _ in NSWorkspace.shared.notificationCenter.notifications(
                 named: NSWorkspace.didWakeNotification
             ) {
-                await MainActor.run {
-                    self?.apply()
-                }
+                self?.handleWake()
+            }
+        }
+        terminateTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: NSApplication.willTerminateNotification
+            ) {
+                self?.release()
             }
         }
         metricsTask = Task.detached { [weak self] in
@@ -104,6 +119,23 @@ final class StayStore {
         }
     }
 
+    func selectMode(_ newMode: StayMode) {
+        mode = newMode
+        if !isEnabled {
+            isEnabled = true
+        }
+    }
+
+    func selectDuration(_ newDuration: StayDuration) {
+        let unchanged = (duration == newDuration)
+        duration = newDuration
+        if !isEnabled {
+            isEnabled = true
+        } else if unchanged {
+            scheduleExpiry()
+        }
+    }
+
     func apply() {
         do {
             try keeper.apply(mode: mode, enabled: isEnabled)
@@ -113,13 +145,32 @@ final class StayStore {
         }
     }
 
-    func remainingDescription(now: Date = .now) -> String {
+    func handleWake() {
+        guard isEnabled else { return }
+        if let expiresAt {
+            if now() >= expiresAt {
+                handleExpiry()
+                return
+            }
+            scheduleExpiryTask(until: expiresAt)
+        }
+        apply()
+    }
+
+    func handleExpiry() {
+        guard isEnabled, let expiresAt, now() >= expiresAt else { return }
+        persistEnabledPreference = false
+        isEnabled = false
+        persistEnabledPreference = true
+    }
+
+    func remainingDescription(now current: Date = .now) -> String {
         if let lastError {
             return lastError
         }
         guard isEnabled else { return "已暂停" }
         guard let expiresAt else { return "保持唤醒中" }
-        let seconds = expiresAt.timeIntervalSince(now)
+        let seconds = expiresAt.timeIntervalSince(current)
         if seconds <= 0 { return "已暂停" }
         let minutes = Int(ceil(seconds / 60))
         if minutes >= 60 {
@@ -136,28 +187,33 @@ final class StayStore {
     func release() {
         metricsTask?.cancel()
         metricsTask = nil
+        wakeTask?.cancel()
+        wakeTask = nil
+        terminateTask?.cancel()
+        terminateTask = nil
         clearExpiry()
         keeper.releaseAll()
     }
 
     private func scheduleExpiry() {
-        expiryTask?.cancel()
-        expiryTask = nil
         guard let interval = duration.timeInterval else {
-            expiresAt = nil
+            clearExpiry()
             return
         }
-        let fireDate = Date().addingTimeInterval(interval)
+        let fireDate = now().addingTimeInterval(interval)
         expiresAt = fireDate
+        scheduleExpiryTask(until: fireDate)
+    }
+
+    private func scheduleExpiryTask(until fireDate: Date) {
+        expiryTask?.cancel()
         expiryTask = Task { [weak self] in
-            let remaining = fireDate.timeIntervalSinceNow
+            let remaining = fireDate.timeIntervalSince(self?.now() ?? Date())
             if remaining > 0 {
                 try? await Task.sleep(for: .seconds(remaining))
             }
             guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self?.handleExpiry()
-            }
+            self?.handleExpiry()
         }
     }
 
@@ -165,12 +221,5 @@ final class StayStore {
         expiryTask?.cancel()
         expiryTask = nil
         expiresAt = nil
-    }
-
-    private func handleExpiry() {
-        guard isEnabled, let expiresAt, Date() >= expiresAt else { return }
-        persistEnabledPreference = false
-        isEnabled = false
-        persistEnabledPreference = true
     }
 }

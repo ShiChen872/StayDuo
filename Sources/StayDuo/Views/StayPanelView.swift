@@ -63,10 +63,7 @@ struct StayPanelView: View {
         VStack(spacing: 6) {
             ForEach(StayMode.allCases) { mode in
                 Button {
-                    store.mode = mode
-                    if !store.isEnabled {
-                        store.isEnabled = true
-                    }
+                    store.selectMode(mode)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: store.mode == mode && store.isEnabled ? "checkmark.circle.fill" : "circle")
@@ -102,10 +99,7 @@ struct StayPanelView: View {
             HStack(spacing: 4) {
                 ForEach(StayDuration.allCases) { item in
                     Button {
-                        store.duration = item
-                        if !store.isEnabled {
-                            store.isEnabled = true
-                        }
+                        store.selectDuration(item)
                     } label: {
                         Text(item.title)
                             .font(.caption2.weight(.semibold))
@@ -204,12 +198,18 @@ struct StayPanelView: View {
         if battery.isCharging {
             return "battery.100.bolt"
         }
-        if battery.percent <= 15 {
-            return "battery.25"
+        if battery.percent >= 90 {
+            return "battery.100"
         }
-        if battery.percent <= 30 {
+        if battery.percent >= 60 {
+            return "battery.75"
+        }
+        if battery.percent >= 35 {
             return "battery.50"
         }
-        return "battery.75"
+        if battery.percent > 15 {
+            return "battery.25"
+        }
+        return "battery.0"
     }
 }

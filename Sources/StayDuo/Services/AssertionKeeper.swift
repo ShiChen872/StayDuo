@@ -1,6 +1,11 @@
 import Foundation
 import IOKit.pwr_mgt
 
+protocol AssertionApplying: AnyObject {
+    func apply(mode: StayMode, enabled: Bool) throws
+    func releaseAll()
+}
+
 /// Holds IOKit power assertions while StayDuo is enabled.
 ///
 /// - `PreventUserIdleDisplaySleep`: screen stays on (implies the Mac will not idle-sleep).
@@ -9,7 +14,7 @@ import IOKit.pwr_mgt
 /// Closing the lid on Apple Silicon still sleeps unless you are in clamshell
 /// (external display + power adapter). That is OS policy, not something a
 /// menu-bar app can override on battery.
-final class AssertionKeeper {
+final class AssertionKeeper: AssertionApplying {
     private var assertionIDs: [IOPMAssertionID] = []
 
     func apply(mode: StayMode, enabled: Bool) throws {
